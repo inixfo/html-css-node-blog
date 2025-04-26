@@ -964,6 +964,123 @@ app.put('/api/admin/reports/:id', authenticateToken, async (req, res) => {
   }
 });
 
+// Edit post endpoint
+app.put('/api/posts/:id', authenticateToken, upload.single('image'), async (req, res) => {
+  const connection = await pool.getConnection();
+  try {
+    const postId = req.params.id;
+    const { content } = req.body;
+    const userId = req.user.id;
+    
+    // Check if post exists and user is authorized
+    const [posts] = await connection.execute(
+      'SELECT * FROM posts WHERE id = ?',
+      [postId]
+    );
+    
+    if (!posts.length) {
+      return res.status(404).json({ message: 'Post not found' });
+    }
+    
+    const post = posts[0];
+    if (post.author_id !== userId && req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Not authorized to edit this post' });
+    }
+    
+    // Handle image update
+    let imageUrl = post.image_url;
+    if (req.file) {
+      // Delete old image if exists
+      if (post.image_url) {
+        const oldImagePath = path.join(uploadsDir, path.basename(post.image_url));
+        if (fs.existsSync(oldImagePath)) {
+          fs.unlinkSync(oldImagePath);
+        }
+      }
+      imageUrl = `/uploads/${req.file.filename}`;
+    }
+    
+    // Update post
+    await connection.execute(
+      'UPDATE posts SET content = ?, image_url = ? WHERE id = ?',
+      [content, imageUrl, postId]
+    );
+    
+    // Get updated post
+    const [updatedPosts] = await connection.execute(`
+      SELECT 
+        p.*,
+        u.username as author_username,
+        u.avatar_url as author_avatar,
+        COUNT(DISTINCT l.id) as likes_count,
+        COUNT(DISTINCT c.id) as comments_count,
+        GROUP_CONCAT(DISTINCT l.user_id) as likes
+      FROM posts p
+      JOIN users u ON p.author_id = u.id
+      LEFT JOIN likes l ON p.id = l.post_id
+      LEFT JOIN comments c ON p.id = c.post_id
+      WHERE p.id = ?
+      GROUP BY p.id
+    `, [postId]);
+    
+    const updatedPost = updatedPosts[0];
+    updatedPost.likes = updatedPost.likes ? updatedPost.likes.split(',').filter(Boolean) : [];
+    updatedPost.author = {
+      username: updatedPost.author_username,
+      avatar: updatedPost.author_avatar
+    };
+    
+    res.json(updatedPost);
+  } catch (error) {
+    console.error('Error updating post:', error);
+    res.status(500).json({ message: 'Failed to update post' });
+  } finally {
+    connection.release();
+  }
+});
+
+// Delete post endpoint
+app.delete('/api/posts/:id', authenticateToken, async (req, res) => {
+  const connection = await pool.getConnection();
+  try {
+    const postId = req.params.id;
+    const userId = req.user.id;
+    
+    // Check if post exists and user is authorized
+    const [posts] = await connection.execute(
+      'SELECT * FROM posts WHERE id = ?',
+      [postId]
+    );
+    
+    if (!posts.length) {
+      return res.status(404).json({ message: 'Post not found' });
+    }
+    
+    const post = posts[0];
+    if (post.author_id !== userId && req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Not authorized to delete this post' });
+    }
+    
+    // Delete post image if exists
+    if (post.image_url) {
+      const imagePath = path.join(uploadsDir, path.basename(post.image_url));
+      if (fs.existsSync(imagePath)) {
+        fs.unlinkSync(imagePath);
+      }
+    }
+    
+    // Delete post and related data
+    await connection.execute('DELETE FROM posts WHERE id = ?', [postId]);
+    
+    res.json({ message: 'Post deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting post:', error);
+    res.status(500).json({ message: 'Failed to delete post' });
+  } finally {
+    connection.release();
+  }
+});
+
 // Static file middleware should be AFTER all API routes
 app.use(express.static(publicDir, {
   setHeaders: (res, path) => {

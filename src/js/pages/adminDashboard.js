@@ -1,5 +1,5 @@
 import { renderNavbar } from '../components/navbar.js';
-import { apiGetAllPosts, apiGetReports, apiGetUsers } from '../api/adminApi.js';
+import { apiGetAllPosts, apiGetReports, apiGetUsers, apiDeletePost } from '../api/adminApi.js';
 import { renderReportManagement } from './reportManagement.js';
 import { isAuthenticated, getUser, getAuthToken } from '../utils/auth.js';
 
@@ -882,7 +882,7 @@ async function loadAdminPosts() {
               <button type="button" class="btn btn-sm btn-outline-warning" data-post-id="${post.id}">
                 <i class="fas fa-edit"></i>
               </button>
-              <button type="button" class="btn btn-sm btn-outline-danger" data-post-id="${post.id}">
+              <button type="button" class="btn btn-sm btn-outline-danger delete-post-btn" data-post-id="${post.id}">
                 <i class="fas fa-trash-alt"></i>
               </button>
             </div>
@@ -890,6 +890,23 @@ async function loadAdminPosts() {
         </tr>
       `;
     }).join('');
+
+    // Add event listeners for delete buttons
+    document.querySelectorAll('.delete-post-btn').forEach(button => {
+      button.addEventListener('click', async (e) => {
+        const postId = e.currentTarget.dataset.postId;
+        if (confirm('Are you sure you want to delete this post?')) {
+          try {
+            await apiDeletePost(postId);
+            showToast('Post deleted successfully', 'success');
+            loadAdminPosts(); // Refresh the posts table
+          } catch (error) {
+            console.error('Error deleting post:', error);
+            showToast('Failed to delete post', 'danger');
+          }
+        }
+      });
+    });
     
   } catch (error) {
     console.error('Error loading admin posts:', error);

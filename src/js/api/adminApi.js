@@ -99,7 +99,7 @@ export async function apiResolveReport(reportId, resolution) {
 export async function apiDeletePost(postId) {
   try {
     const token = getAuthToken();
-    const response = await fetch(`/api/admin/posts/${postId}`, {
+    const response = await fetch(`/api/posts/${postId}`, {
       method: 'DELETE',
       headers: {
         'Authorization': `Bearer ${token}`
